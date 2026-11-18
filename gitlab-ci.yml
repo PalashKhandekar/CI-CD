@@ -1,0 +1,48 @@
+
+stages:
+  - deploy
+
+deploy_monitoring:
+  stage: deploy
+
+  image: alpine:latest
+
+  before_script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+
+    - eval "$(ssh-agent -s)"
+    - ssh-add "$SSH_PRIVATE_KEY"
+
+    - cp "$SSH_KNOWN_HOSTS" ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+
+  script:
+    - echo "Preparing EC2 monitoring directory..."
+
+    - >
+      ssh "$SSH_USER@$EC2_PUBLIC_IP"
+      "mkdir -p ~/monitoring-stack"
+
+    - echo "Copying configuration files..."
+
+    - scp docker-compose.yml "$SSH_USER@$EC2_PUBLIC_IP:~/monitoring-stack/"
+    - scp prometheus.yml "$SSH_USER@$EC2_PUBLIC_IP:~/monitoring-stack/"
+
+    - echo "Deploying Prometheus and Grafana..."
+
+    - >
+      ssh "$SSH_USER@$EC2_PUBLIC_IP"
+      "cd ~/monitoring-stack &&
+      echo 'GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD' > .env &&
+      chmod 600 .env &&
+      docker compose pull &&
+      docker compose up -d --remove-orphans"
+
+    - echo "Monitoring stack deployed!"
+
+    - >
+      ssh "$SSH_USER@$EC2_PUBLIC_IP"
+      "docker ps"
+
